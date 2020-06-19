@@ -25,7 +25,7 @@ class MethodChannelWebViewPlatform implements WebViewPlatformController {
   static const MethodChannel _cookieManagerChannel =
       MethodChannel('plugins.flutter.io/cookie_manager');
 
-  Future<bool> _onMethodCall(MethodCall call) async {
+  Future<dynamic> _onMethodCall(MethodCall call) async {
     switch (call.method) {
       case 'javascriptChannelMessage':
         final String channel = call.arguments['channel'];
@@ -61,6 +61,14 @@ class MethodChannelWebViewPlatform implements WebViewPlatformController {
           ),
         );
         return null;
+      case 'onJsConfirm':
+        return await _platformCallbacksHandler
+            .onJsConfirm(call.arguments['message']);
+      case 'onJsAlert':
+        return await _platformCallbacksHandler.onJsAlert(call.arguments['message']);        
+      case 'onJsPrompt':
+        return await _platformCallbacksHandler.onJsPrompt(
+            call.arguments['message'], call.arguments['default']);        
     }
 
     throw MissingPluginException(
@@ -100,6 +108,9 @@ class MethodChannelWebViewPlatform implements WebViewPlatformController {
 
   @override
   Future<void> clearCache() => _channel.invokeMethod<void>("clearCache");
+
+  @override
+  Future<void> stopLoading() => _channel.invokeMethod<void>("stopLoading");
 
   @override
   Future<void> updateSettings(WebSettings settings) {
@@ -195,6 +206,7 @@ class MethodChannelWebViewPlatform implements WebViewPlatformController {
       'initialUrl': creationParams.initialUrl,
       'settings': _webSettingsToMap(creationParams.webSettings),
       'javascriptChannelNames': creationParams.javascriptChannelNames.toList(),
+      'userScripts': creationParams.userScripts.toList(),
       'userAgent': creationParams.userAgent,
       'autoMediaPlaybackPolicy': creationParams.autoMediaPlaybackPolicy.index,
     };

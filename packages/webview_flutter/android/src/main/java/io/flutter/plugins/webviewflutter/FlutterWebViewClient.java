@@ -20,7 +20,11 @@ import androidx.webkit.WebViewClientCompat;
 import io.flutter.plugin.common.MethodChannel;
 import java.util.HashMap;
 import java.util.Locale;
+import java.util.List;
+import java.util.ArrayList;
 import java.util.Map;
+
+import okhttp3.*;
 
 // We need to use WebViewClientCompat to get
 // shouldOverrideUrlLoading(WebView view, WebResourceRequest request)
@@ -31,8 +35,16 @@ class FlutterWebViewClient {
   private final MethodChannel methodChannel;
   private boolean hasNavigationDelegate;
 
+  private List<UserScript> userScripts = new ArrayList<UserScript>();
+
   FlutterWebViewClient(MethodChannel methodChannel) {
     this.methodChannel = methodChannel;
+  }
+
+  protected void addUserScripts(List<Map<String, Object>> scripts) {
+    for (Map<String, Object> map : scripts) {
+      userScripts.add(new UserScript(map));
+    }
   }
 
   private static String errorCodeToString(int errorCode) {
@@ -74,10 +86,10 @@ class FlutterWebViewClient {
     final String message =
         String.format(Locale.getDefault(), "Could not find a string for errorCode: %d", errorCode);
     throw new IllegalArgumentException(message);
-  }
+  }  
 
   @TargetApi(Build.VERSION_CODES.LOLLIPOP)
-  private boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+  protected boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
     if (!hasNavigationDelegate) {
       return false;
     }
@@ -97,7 +109,7 @@ class FlutterWebViewClient {
     return request.isForMainFrame();
   }
 
-  private boolean shouldOverrideUrlLoading(WebView view, String url) {
+  protected boolean shouldOverrideUrlLoading(WebView view, String url) {
     if (!hasNavigationDelegate) {
       return false;
     }
@@ -113,19 +125,19 @@ class FlutterWebViewClient {
     return true;
   }
 
-  private void onPageStarted(WebView view, String url) {
+  protected void onPageStarted(WebView view, String url) {
     Map<String, Object> args = new HashMap<>();
     args.put("url", url);
     methodChannel.invokeMethod("onPageStarted", args);
   }
 
-  private void onPageFinished(WebView view, String url) {
+  protected void onPageFinished(WebView view, String url) {
     Map<String, Object> args = new HashMap<>();
     args.put("url", url);
     methodChannel.invokeMethod("onPageFinished", args);
   }
 
-  private void onWebResourceError(
+  protected void onWebResourceError(
       final int errorCode, final String description, final String failingUrl) {
     final Map<String, Object> args = new HashMap<>();
     args.put("errorCode", errorCode);
@@ -135,7 +147,7 @@ class FlutterWebViewClient {
     methodChannel.invokeMethod("onWebResourceError", args);
   }
 
-  private void notifyOnNavigationRequest(
+  protected void notifyOnNavigationRequest(
       String url, Map<String, String> headers, WebView webview, boolean isMainFrame) {
     HashMap<String, Object> args = new HashMap<>();
     args.put("url", url);

@@ -31,6 +31,15 @@ abstract class WebViewPlatformCallbacksHandler {
 
   /// Report web resource loading error to the host application.
   void onWebResourceError(WebResourceError error);
+
+  // Invoked when javascript in a page invokes the "prompt" function
+  Future<void> onJsAlert(String message);
+
+  // Invoked when javascript in a page invokes the "confirm" function
+  Future<bool> onJsConfirm(String message);
+
+  // Invoked when javascript in a page invokes the "prompt" function
+  Future<String> onJsPrompt(String message, String defaultMessage);
 }
 
 /// Possible error type categorizations used by [WebResourceError].
@@ -233,6 +242,12 @@ abstract class WebViewPlatformController {
         "WebView reload is not implemented on the current platform");
   }
 
+  /// Stop loading content
+  Future<void> stopLoading() {
+    throw UnimplementedError(
+        "WebView stopLoading is not implemented on the current platform");
+  }
+
   /// Clears all caches used by the [WebView].
   ///
   /// The following caches are cleared:
@@ -430,6 +445,7 @@ class CreationParams {
     this.webSettings,
     this.javascriptChannelNames,
     this.userAgent,
+    this.userScripts,
     this.autoMediaPlaybackPolicy =
         AutoMediaPlaybackPolicy.require_user_action_for_all_media_types,
   }) : assert(autoMediaPlaybackPolicy != null);
@@ -456,6 +472,9 @@ class CreationParams {
   // TODO(amirh): describe what should happen when postMessage is called once that code is migrated
   // to PlatformWebView.
   final Set<String> javascriptChannelNames;
+
+  /// User defined secripts to inject into the webview
+  final Set<Map<String, dynamic>> userScripts;
 
   /// The value used for the HTTP User-Agent: request header.
   ///

@@ -64,6 +64,12 @@ enum NavigationDecision {
   navigate,
 }
 
+typedef Future<bool> JsConfirmCallback(String message);
+
+typedef Future<void> JsAlertCallback(String message);
+
+typedef Future<String> JsPromptCallback(String message, String defaultMessage);
+
 /// Decides how to handle a specific navigation request.
 ///
 /// The returned [NavigationDecision] determines how the navigation described by
@@ -132,6 +138,27 @@ class JavascriptChannel {
   final JavascriptMessageHandler onMessageReceived;
 }
 
+/// A user defined javascript source to inject into the webview
+class UserScript {
+  /// Constructs a UserScript object
+  ///
+  ///source must not be null
+  UserScript({
+    @required this.source,
+    this.injectAtStart = true,
+    this.mainFrameOnly = false,
+  });
+
+  /// The javascript source to inject
+  final String source;
+
+  /// Inject script at document start. Otherwise inject at the end.
+  final bool injectAtStart;
+
+  /// Inject for main iframe only. Default is false.
+  final bool mainFrameOnly;
+}
+
 /// A web view widget for showing html content.
 class WebView extends StatefulWidget {
   /// Creates a new web view.
@@ -146,11 +173,15 @@ class WebView extends StatefulWidget {
     this.initialUrl,
     this.javascriptMode = JavascriptMode.disabled,
     this.javascriptChannels,
+    this.userScripts = const {},
     this.navigationDelegate,
     this.gestureRecognizers,
     this.onPageStarted,
     this.onPageFinished,
     this.onWebResourceError,
+    this.onJsConfirm,
+    this.onJsAlert,
+    this.onJsPrompt,
     this.debuggingEnabled = false,
     this.gestureNavigationEnabled = false,
     this.userAgent,
@@ -242,6 +273,12 @@ class WebView extends StatefulWidget {
   /// A null value is equivalent to an empty set.
   final Set<JavascriptChannel> javascriptChannels;
 
+  /// User defined javasript sources to inject into the webview
+  ///
+  /// Scripts may be injected at document start or end, and for main frame only or not
+  /// This closely mirrors WKUserScript - https://developer.apple.com/documentation/webkit/wkuserscript
+  final Set<UserScript> userScripts;
+
   /// A delegate function that decides how to handle navigation actions.
   ///
   /// When a navigation is initiated by the WebView (e.g when a user clicks a link)
@@ -280,6 +317,21 @@ class WebView extends StatefulWidget {
   /// directly in the HTML has been loaded and code injected with
   /// [WebViewController.evaluateJavascript] can assume this.
   final PageFinishedCallback onPageFinished;
+
+  /// Invoked when a javascript confirm dialog is requested to be presented
+  ///
+  /// If null, the default behavior is to return true
+  final JsConfirmCallback onJsConfirm;
+
+  /// Invoked when a javascript alert dialog is requested to be presented
+  ///
+  /// If null, the default behavior is to return null
+  final JsAlertCallback onJsAlert;
+
+  /// Invoked when a javascript prompt dialog is requested to be presented
+  ///
+  /// If null, the default behavior is to return the default parameter
+  final JsPromptCallback onJsPrompt;
 
   /// Invoked when a web resource has failed to load.
   ///
@@ -391,6 +443,7 @@ CreationParams _creationParamsfromWidget(WebView widget) {
     initialUrl: widget.initialUrl,
     webSettings: _webSettingsFromWidget(widget),
     javascriptChannelNames: _extractChannelNames(widget.javascriptChannels),
+    userScripts: _extractUserScriptMap(widget.userScripts),
     userAgent: widget.userAgent,
     autoMediaPlaybackPolicy: widget.initialMediaPlaybackPolicy,
   );
@@ -442,6 +495,15 @@ WebSettings _clearUnchangedWebSettings(
     userAgent: userAgent,
   );
 }
+
+Set<Map<String, dynamic>> _extractUserScriptMap(Set<UserScript> scripts) =>
+    scripts
+        .map((script) => Map.fromEntries([
+              MapEntry('source', script.source),
+              MapEntry('injectionTime', script.injectAtStart ? 'start' : 'end'),
+              MapEntry('mainFrameOnly', script.mainFrameOnly),
+            ]))
+        .toSet();
 
 Set<String> _extractChannelNames(Set<JavascriptChannel> channels) {
   final Set<String> channelNames = channels == null
@@ -496,6 +558,32 @@ class _PlatformCallbacksHandler implements WebViewPlatformCallbacksHandler {
   void onWebResourceError(WebResourceError error) {
     if (_widget.onWebResourceError != null) {
       _widget.onWebResourceError(error);
+    }
+  }
+
+  Future<bool> onJsConfirm(String message) {
+    if (_widget.onJsConfirm != null) {
+      return _widget.onJsConfirm(message);
+    } else {
+      return Future.value(true);
+    }
+  }
+
+  @override
+  Future<void> onJsAlert(String message) {
+    if (_widget.onJsAlert != null) {
+      return _widget.onJsAlert(message);
+    } else {
+      return Future.value(null);
+    }
+  }
+
+  @override
+  Future<String> onJsPrompt(String message, String defaultMessage) {
+    if (_widget.onJsPrompt != null) {
+      return _widget.onJsPrompt(message, defaultMessage);
+    } else {
+      return Future.value(defaultMessage);
     }
   }
 
@@ -592,6 +680,11 @@ class WebViewController {
   /// Reloads the current URL.
   Future<void> reload() {
     return _webViewPlatformController.reload();
+  }
+
+  /// Informs the webview to stop loading content
+  Future<void> stopLoading() {
+    return _webViewPlatformController.stopLoading();
   }
 
   /// Clears all caches used by the [WebView].

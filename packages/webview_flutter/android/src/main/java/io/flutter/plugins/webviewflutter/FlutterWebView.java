@@ -60,6 +60,11 @@ public class FlutterWebView implements PlatformView, MethodCallHandler {
       registerJavaScriptChannelNames((List<String>) params.get(JS_CHANNEL_NAMES_FIELD));
     }
 
+    if (params.containsKey("userScripts")) {
+      final List<Map<String, Object>> userScripts = (List<Map<String, Object>>) params.get("userScripts");
+      flutterWebViewClient.addUserScripts(userScripts);            
+    }
+
     updateAutoMediaPlaybackPolicy((Integer) params.get("autoMediaPlaybackPolicy"));
     if (params.containsKey("userAgent")) {
       String userAgent = (String) params.get("userAgent");
@@ -69,6 +74,9 @@ public class FlutterWebView implements PlatformView, MethodCallHandler {
       String url = (String) params.get("initialUrl");
       webView.loadUrl(url);
     }
+
+    FlutterWebChromeClient client = new FlutterWebChromeClient(methodChannel);
+    webView.setWebChromeClient(client);
   }
 
   @Override
@@ -139,6 +147,9 @@ public class FlutterWebView implements PlatformView, MethodCallHandler {
         break;
       case "reload":
         reload(result);
+        break;
+      case "stopLoading":
+        stopLoading(result);
         break;
       case "currentUrl":
         currentUrl(result);
@@ -211,6 +222,11 @@ public class FlutterWebView implements PlatformView, MethodCallHandler {
 
   private void reload(Result result) {
     webView.reload();
+    result.success(null);
+  }
+  
+  private void stopLoading(Result result) {
+    webView.stopLoading();
     result.success(null);
   }
 
