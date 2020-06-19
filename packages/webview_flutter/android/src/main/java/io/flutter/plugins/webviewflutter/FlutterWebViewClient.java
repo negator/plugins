@@ -4,23 +4,24 @@
 
 package io.flutter.plugins.webviewflutter;
 
-import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
 import android.graphics.Bitmap;
 import android.os.Build;
 import android.util.Log;
 import android.view.KeyEvent;
-import android.webkit.WebResourceError;
+import android.webkit.ConsoleMessage;
+import android.webkit.JsResult;
+import android.webkit.JsPromptResult;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import androidx.annotation.RequiresApi;
-import androidx.webkit.WebResourceErrorCompat;
+import android.webkit.WebChromeClient;
 import androidx.webkit.WebViewClientCompat;
 import io.flutter.plugin.common.MethodChannel;
-import java.util.HashMap;
-import java.util.Locale;
-import java.util.Map;
+import java.util.*;
+
+import okhttp3.*;
 
 // We need to use WebViewClientCompat to get
 // shouldOverrideUrlLoading(WebView view, WebResourceRequest request)
@@ -30,50 +31,16 @@ class FlutterWebViewClient {
   private static final String TAG = "FlutterWebViewClient";
   private final MethodChannel methodChannel;
   private boolean hasNavigationDelegate;
+  private List<UserScript> userScripts = new ArrayList<UserScript>();
 
   FlutterWebViewClient(MethodChannel methodChannel) {
     this.methodChannel = methodChannel;
   }
 
-  private static String errorCodeToString(int errorCode) {
-    switch (errorCode) {
-      case WebViewClient.ERROR_AUTHENTICATION:
-        return "authentication";
-      case WebViewClient.ERROR_BAD_URL:
-        return "badUrl";
-      case WebViewClient.ERROR_CONNECT:
-        return "connect";
-      case WebViewClient.ERROR_FAILED_SSL_HANDSHAKE:
-        return "failedSslHandshake";
-      case WebViewClient.ERROR_FILE:
-        return "file";
-      case WebViewClient.ERROR_FILE_NOT_FOUND:
-        return "fileNotFound";
-      case WebViewClient.ERROR_HOST_LOOKUP:
-        return "hostLookup";
-      case WebViewClient.ERROR_IO:
-        return "io";
-      case WebViewClient.ERROR_PROXY_AUTHENTICATION:
-        return "proxyAuthentication";
-      case WebViewClient.ERROR_REDIRECT_LOOP:
-        return "redirectLoop";
-      case WebViewClient.ERROR_TIMEOUT:
-        return "timeout";
-      case WebViewClient.ERROR_TOO_MANY_REQUESTS:
-        return "tooManyRequests";
-      case WebViewClient.ERROR_UNKNOWN:
-        return "unknown";
-      case WebViewClient.ERROR_UNSAFE_RESOURCE:
-        return "unsafeResource";
-      case WebViewClient.ERROR_UNSUPPORTED_AUTH_SCHEME:
-        return "unsupportedAuthScheme";
-      case WebViewClient.ERROR_UNSUPPORTED_SCHEME:
-        return "unsupportedScheme";
-    }
-
-    final String message =
-        String.format(Locale.getDefault(), "Could not find a string for errorCode: %d", errorCode);
-    throw new IllegalArgumentException(message);
+  protected void addUserScripts(List<Map<String, Object>> scripts) {
+      for (Map<String, Object> map : scripts) {
+        userScripts.add(new UserScript(map));
+      }
   }
 
   @TargetApi(Build.VERSION_CODES.LOLLIPOP)
@@ -125,27 +92,98 @@ class FlutterWebViewClient {
     methodChannel.invokeMethod("onPageFinished", args);
   }
 
-  private void onWebResourceError(
-      final int errorCode, final String description, final String failingUrl) {
-    final Map<String, Object> args = new HashMap<>();
-    args.put("errorCode", errorCode);
-    args.put("description", description);
-    args.put("errorType", FlutterWebViewClient.errorCodeToString(errorCode));
-    args.put("failingUrl", failingUrl);
-    methodChannel.invokeMethod("onWebResourceError", args);
-  }
-
   private void notifyOnNavigationRequest(
-      String url, Map<String, String> headers, WebView webview, boolean isMainFrame) {
+      final String url, final Map<String, String> headers, final WebView webview, boolean isMainFrame) {
     HashMap<String, Object> args = new HashMap<>();
     args.put("url", url);
     args.put("isForMainFrame", isMainFrame);
     if (isMainFrame) {
-      methodChannel.invokeMethod(
-          "navigationRequest", args, new OnNavigationRequestResult(url, headers, webview));
+      methodChannel.invokeMethod("navigationRequest", args, new Result("navigationRequest") {
+            @Override
+            public void success(Object response) {                
+              if (!(Boolean)response) {
+                return;
+              }
+                
+              if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    webview.loadUrl(url, headers);
+              } else {
+                    webview.loadUrl(url);
+              }
+            }                                   
+          });
     } else {
       methodChannel.invokeMethod("navigationRequest", args);
     }
+  }
+
+  WebChromeClient createWebViewChromeClient() {
+    return new WebChromeClient() {
+        @Override
+        public boolean onConsoleMessage(ConsoleMessage consoleMessage) {
+            System.out.println(consoleMessage.message() + " -- From line "
+                    + consoleMessage.lineNumber() + " of "
+                    + consoleMessage.sourceId());
+            return super.onConsoleMessage(consoleMessage);
+        }
+
+        @Override
+        public boolean onJsConfirm(WebView view, String url, String message, final JsResult result) {
+
+          HashMap<String, Object> args = new HashMap<>();
+          args.put("message", message);
+
+          methodChannel.invokeMethod(
+            "onJsConfirm", args, new Result("onJsConfirm") {
+                  @Override
+                  public void success(Object response) {
+                    Boolean confirm = (Boolean) response;
+                    if (confirm) {
+                      result.confirm();
+                    } else {
+                      result.cancel();
+                    }
+                  }
+            });
+
+          return true;
+        }
+
+        @Override
+        public boolean onJsAlert(WebView view, String url, String message, final JsResult result) {
+
+          HashMap<String, Object> args = new HashMap<>();
+          args.put("message", message);
+
+          methodChannel.invokeMethod(
+            "onJsAlert", args, new Result("onJsAlert") {
+                  @Override
+                  public void success(Object response) {
+                    result.confirm();
+                  }
+            });
+
+          return true;
+        }
+
+        @Override
+        public boolean onJsPrompt(WebView view, String url, String message, String defaultValue, final JsPromptResult result) {
+
+          HashMap<String, Object> args = new HashMap<>();
+          args.put("message", message);
+          args.put("default", defaultValue);
+
+          methodChannel.invokeMethod(
+            "onJsPrompt", args, new Result("onJsPrompt") {
+                  @Override
+                  public void success(Object response) {
+                    result.confirm(response.toString());
+                  }
+            });
+
+          return true;
+        }
+    };
   }
 
   // This method attempts to avoid using WebViewClientCompat due to bug
@@ -155,14 +193,70 @@ class FlutterWebViewClient {
     this.hasNavigationDelegate = hasNavigationDelegate;
 
     if (!hasNavigationDelegate || android.os.Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-      return internalCreateWebViewClient();
+      return internalCreateWebViewClient(userScripts);
     }
 
     return internalCreateWebViewClientCompat();
   }
 
-  private WebViewClient internalCreateWebViewClient() {
-    return new WebViewClient() {
+  private WebViewClient internalCreateWebViewClient(final List<UserScript> scripts) {
+
+    final MediaType jsonContentType = MediaType.parse("application/json; charset=UTF-8");
+
+    return new WebViewClient() {      
+
+    private final OkHttpClient okHttpClient = new OkHttpClient.Builder()
+              .followRedirects(true)
+              .followSslRedirects(true)
+              .cookieJar(new CookieJar() {
+                Map<String, Map<String,Cookie>> map = new HashMap<>();
+                @Override
+                public void saveFromResponse(HttpUrl url, List<Cookie> cookies) {
+                  for(Cookie c : cookies) {
+                    Map<String, Cookie> cc = map.get(c.domain());
+                    if (cc == null) {
+                      cc = new HashMap<>();
+                      map.put(c.domain(), cc);
+                    }
+                    cc.put(c.name(), c);
+                  }
+                }
+
+                @Override
+                public List<Cookie> loadForRequest(HttpUrl url) {
+                  Map<String, Cookie> cc = map.get(url.topPrivateDomain());
+                  List<Cookie> cookies = new ArrayList<>();
+                  if (cc == null)
+                    return cookies;
+
+                  for (Cookie cookie: cc.values()) {
+                    if (cookie.hostOnly() && !url.host().equals(cookie.domain())) continue;
+                    else if (cookie.httpOnly() && !url.scheme().startsWith("http")) continue;
+                    else if (cookie.secure() && !url.isHttps()) continue;
+                    else if (cookie.expiresAt() < System.currentTimeMillis()) continue;
+                    else if (!cookie.path().equals("/") && !cookie.path().equals(url.encodedPath()))continue;
+                    else cookies.add(cookie);
+                  }
+
+                  return cookies;
+                }
+              })
+              .build();
+      protected void log(String pfx, String msg) {
+        System.out.println(pfx +": "+msg);
+      }
+
+      protected void log(Exception msg) {
+        msg.printStackTrace();
+      }
+
+      @TargetApi(Build.VERSION_CODES.LOLLIPOP)
+      @Override
+      public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+        // return okhttpFetch(request);
+        return null;
+      }
+
       @TargetApi(Build.VERSION_CODES.N)
       @Override
       public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
@@ -175,22 +269,53 @@ class FlutterWebViewClient {
       }
 
       @Override
-      public void onPageFinished(WebView view, String url) {
+      public void onPageFinished(WebView view, String url) {       
         FlutterWebViewClient.this.onPageFinished(view, url);
       }
 
-      @TargetApi(Build.VERSION_CODES.M)
-      @Override
-      public void onReceivedError(
-          WebView view, WebResourceRequest request, WebResourceError error) {
-        FlutterWebViewClient.this.onWebResourceError(
-            error.getErrorCode(), error.getDescription().toString(), request.getUrl().toString());
-      }
+      private WebResourceResponse okhttpFetch(WebResourceRequest request) {
 
-      @Override
-      public void onReceivedError(
-          WebView view, int errorCode, String description, String failingUrl) {
-        FlutterWebViewClient.this.onWebResourceError(errorCode, description, failingUrl);
+        MediaType contentType = jsonContentType;
+
+        if (request == null || request.getUrl() == null || request.hasGesture()) {
+          return null;
+        }
+
+        String url = request.getUrl().toString();
+        String scheme = request.getUrl().getScheme().toLowerCase().trim();
+        String method = request.getMethod() == null ? "GET" : request.getMethod();        
+
+        if (!scheme.equals("http") && !scheme.equals("https")) {
+          return null;
+        }
+
+        log("debug", "URL: "+url);
+        log("debug", "METHOD: "+method);
+        log("debug", "Headers: "+request.getRequestHeaders().toString());
+
+        Request.Builder b = new Request.Builder().url(url);
+
+        //Iterate headers. Extract request body if it exists        
+
+        for (Map.Entry<String, String> entry : request.getRequestHeaders().entrySet()) {
+          
+          String key = entry.getKey().trim().toLowerCase();
+          String value = entry.getValue().trim().toLowerCase();
+
+          if (key.equals("accept") && !value.contains("html")) {
+            return null;
+          } else {
+            b = b.addHeader(entry.getKey(), entry.getValue());
+          }          
+        }
+
+        b.method(method, null);
+        
+        Request req = b.build();
+        log("debug", "Request: "+req.toString());
+        log("debug", "Request Headers: "+req.headers().toString());
+        Call call = okHttpClient.newCall(req);
+        return new NonBlockingWebResourceResponse(call, scripts);
       }
 
       @Override
@@ -199,6 +324,7 @@ class FlutterWebViewClient {
         // handled even though they were handled. We don't want to propagate those as they're not
         // truly lost.
       }
+
     };
   }
 
@@ -224,23 +350,6 @@ class FlutterWebViewClient {
         FlutterWebViewClient.this.onPageFinished(view, url);
       }
 
-      // This method is only called when the WebViewFeature.RECEIVE_WEB_RESOURCE_ERROR feature is
-      // enabled. The deprecated method is called when a device doesn't support this.
-      @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
-      @SuppressLint("RequiresFeature")
-      @Override
-      public void onReceivedError(
-          WebView view, WebResourceRequest request, WebResourceErrorCompat error) {
-        FlutterWebViewClient.this.onWebResourceError(
-            error.getErrorCode(), error.getDescription().toString(), request.getUrl().toString());
-      }
-
-      @Override
-      public void onReceivedError(
-          WebView view, int errorCode, String description, String failingUrl) {
-        FlutterWebViewClient.this.onWebResourceError(errorCode, description, failingUrl);
-      }
-
       @Override
       public void onUnhandledKeyEvent(WebView view, KeyEvent event) {
         // Deliberately empty. Occasionally the webview will mark events as having failed to be
@@ -250,42 +359,25 @@ class FlutterWebViewClient {
     };
   }
 
-  private static class OnNavigationRequestResult implements MethodChannel.Result {
-    private final String url;
-    private final Map<String, String> headers;
-    private final WebView webView;
+  public abstract class Result implements MethodChannel.Result {
 
-    private OnNavigationRequestResult(String url, Map<String, String> headers, WebView webView) {
-      this.url = url;
-      this.headers = headers;
-      this.webView = webView;
+    private final String methodName;
+    private Result(String methodName) {
+      this.methodName = methodName;
     }
 
     @Override
-    public void success(Object shouldLoad) {
-      Boolean typedShouldLoad = (Boolean) shouldLoad;
-      if (typedShouldLoad) {
-        loadUrl();
-      }
-    }
+    public abstract void success(Object result);
 
     @Override
     public void error(String errorCode, String s1, Object o) {
-      throw new IllegalStateException("navigationRequest calls must succeed");
+      throw new IllegalStateException(methodName + " calls must succeed");
     }
 
     @Override
     public void notImplemented() {
       throw new IllegalStateException(
-          "navigationRequest must be implemented by the webview method channel");
+          methodName + " must be implemented by the webview method channel");
     }
-
-    private void loadUrl() {
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-        webView.loadUrl(url, headers);
-      } else {
-        webView.loadUrl(url);
-      }
-    }
-  }
+  }  
 }

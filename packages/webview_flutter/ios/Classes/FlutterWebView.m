@@ -39,6 +39,7 @@
 - (void)setFrame:(CGRect)frame {
   [super setFrame:frame];
   self.scrollView.contentInset = UIEdgeInsetsZero;
+
   // We don't want the contentInsets to be adjusted by iOS, flutter should always take control of
   // webview's contentInsets.
   // self.scrollView.contentInset = UIEdgeInsetsZero;
@@ -91,21 +92,66 @@
     [self updateAutoMediaPlaybackPolicy:args[@"autoMediaPlaybackPolicy"]
                         inConfiguration:configuration];
 
+
+    if ([args[@"userScripts"] isKindOfClass:[NSArray class]]) {
+        NSArray* userScripts = args[@"userScripts"];
+        for (NSDictionary* script in userScripts) {
+            NSString* source = script[@"source"];
+            NSString* injection = script[@"injectionTime"];
+            NSNumber* mainFrame = script[@"mainFrameOnly"];
+
+            WKUserScriptInjectionTime time = WKUserScriptInjectionTimeAtDocumentStart;
+            if ([injection isEqualToString:@"end"]) {
+              time = WKUserScriptInjectionTimeAtDocumentEnd;
+            }
+            
+            BOOL mainFrameOnly = [mainFrame boolValue];
+            
+            WKUserScript* wrapperScript =
+                [[WKUserScript alloc] initWithSource:source
+                                    injectionTime:time
+                                    forMainFrameOnly:mainFrameOnly];
+
+            [userContentController addUserScript:wrapperScript];
+        }
+    }
+
+    // Background mode
+    NSString* str;
+    if (@available(iOS 12.2, *)) {
+        // do stuff for iOS 12.2 and newer
+        NSLog(@"iOS 12.2+ detected");
+        str = @"YWx3YXlzUnVuc0F0Rm9yZWdyb3VuZFByaW9yaXR5";
+    } else {
+        NSLog(@"iOS Below 12.2 detected");
+        str = @"X2Fsd2F5c1J1bnNBdEZvcmVncm91bmRQcmlvcml0eQ";
+    }
+
+    NSData* data  = [[NSData alloc] initWithBase64EncodedString:str options:0];
+    NSString* prop = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+    [configuration setValue:[NSNumber numberWithBool:YES] forKey:prop];
+
     _webView = [[FLTWKWebView alloc] initWithFrame:frame configuration:configuration];
+
     _navigationDelegate = [[FLTWKNavigationDelegate alloc] initWithChannel:_channel];
     _webView.UIDelegate = self;
+    _webView.scrollView.delegate = self;
     _webView.navigationDelegate = _navigationDelegate;
+    
+
     __weak __typeof__(self) weakSelf = self;
     [_channel setMethodCallHandler:^(FlutterMethodCall* call, FlutterResult result) {
       [weakSelf onMethodCall:call result:result];
     }];
-
+      
+    
     if (@available(iOS 11.0, *)) {
       _webView.scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
       if (@available(iOS 13.0, *)) {
         _webView.scrollView.automaticallyAdjustsScrollIndicatorInsets = NO;
       }
     }
+
 
     [self applySettings:settings];
     // TODO(amirh): return an error if apply settings failed once it's possible to do so.
@@ -123,7 +169,7 @@
   return _webView;
 }
 
-- (void)onMethodCall:(FlutterMethodCall*)call result:(FlutterResult)result {
+- (void)onMethodCall:(FlutterMethodCall*)call result:(FlutterResult)result {  
   if ([[call method] isEqualToString:@"updateSettings"]) {
     [self onUpdateSettings:call result:result];
   } else if ([[call method] isEqualToString:@"loadUrl"]) {
@@ -138,6 +184,8 @@
     [self onGoForward:call result:result];
   } else if ([[call method] isEqualToString:@"reload"]) {
     [self onReload:call result:result];
+  } else if ([[call method] isEqualToString:@"stopLoading"]) {    
+    [self onStopLoading:result];
   } else if ([[call method] isEqualToString:@"currentUrl"]) {
     [self onCurrentUrl:call result:result];
   } else if ([[call method] isEqualToString:@"evaluateJavascript"]) {
@@ -149,15 +197,7 @@
   } else if ([[call method] isEqualToString:@"clearCache"]) {
     [self clearCache:result];
   } else if ([[call method] isEqualToString:@"getTitle"]) {
-    [self onGetTitle:result];
-  } else if ([[call method] isEqualToString:@"scrollTo"]) {
-    [self onScrollTo:call result:result];
-  } else if ([[call method] isEqualToString:@"scrollBy"]) {
-    [self onScrollBy:call result:result];
-  } else if ([[call method] isEqualToString:@"getScrollX"]) {
-    [self getScrollX:call result:result];
-  } else if ([[call method] isEqualToString:@"getScrollY"]) {
-    [self getScrollY:call result:result];
+    [self onGetTitle:result];  
   } else {
     result(FlutterMethodNotImplemented);
   }
@@ -205,6 +245,11 @@
 
 - (void)onReload:(FlutterMethodCall*)call result:(FlutterResult)result {
   [_webView reload];
+  result(nil);
+}
+
+- (void)onStopLoading:(FlutterResult)result {    
+  [_webView stopLoading];  
   result(nil);
 }
 
@@ -283,36 +328,6 @@
   result(title);
 }
 
-- (void)onScrollTo:(FlutterMethodCall*)call result:(FlutterResult)result {
-  NSDictionary* arguments = [call arguments];
-  int x = [arguments[@"x"] intValue];
-  int y = [arguments[@"y"] intValue];
-
-  _webView.scrollView.contentOffset = CGPointMake(x, y);
-  result(nil);
-}
-
-- (void)onScrollBy:(FlutterMethodCall*)call result:(FlutterResult)result {
-  CGPoint contentOffset = _webView.scrollView.contentOffset;
-
-  NSDictionary* arguments = [call arguments];
-  int x = [arguments[@"x"] intValue] + contentOffset.x;
-  int y = [arguments[@"y"] intValue] + contentOffset.y;
-
-  _webView.scrollView.contentOffset = CGPointMake(x, y);
-  result(nil);
-}
-
-- (void)getScrollX:(FlutterMethodCall*)call result:(FlutterResult)result {
-  int offsetX = _webView.scrollView.contentOffset.x;
-  result([NSNumber numberWithInt:offsetX]);
-}
-
-- (void)getScrollY:(FlutterMethodCall*)call result:(FlutterResult)result {
-  int offsetY = _webView.scrollView.contentOffset.y;
-  result([NSNumber numberWithInt:offsetY]);
-}
-
 // Returns nil when successful, or an error message when one or more keys are unknown.
 - (NSString*)applySettings:(NSDictionary<NSString*, id>*)settings {
   NSMutableArray<NSString*>* unknownKeys = [[NSMutableArray alloc] init];
@@ -323,6 +338,7 @@
     } else if ([key isEqualToString:@"hasNavigationDelegate"]) {
       NSNumber* hasDartNavigationDelegate = settings[key];
       _navigationDelegate.hasDartNavigationDelegate = [hasDartNavigationDelegate boolValue];
+
     } else if ([key isEqualToString:@"debuggingEnabled"]) {
       // no-op debugging is always enabled on iOS.
     } else if ([key isEqualToString:@"gestureNavigationEnabled"]) {
@@ -332,6 +348,7 @@
     } else if ([key isEqualToString:@"userAgent"]) {
       NSString* userAgent = settings[key];
       [self updateUserAgent:[userAgent isEqual:[NSNull null]] ? nil : userAgent];
+
     } else {
       [unknownKeys addObject:key];
     }
@@ -437,6 +454,19 @@
   }
 }
 
+#pragma mark UIScrollViewDelegate
+
+- (void)scrollViewWillBeginZooming:(UIScrollView *)scrollView 
+                          withView:(UIView *)view {
+    
+    scrollView.pinchGestureRecognizer.enabled = false;
+}
+
+- (void)scrollViewDidZoom:(UIScrollView *)scrollView {
+  [scrollView setZoomScale:1.0 animated: false];
+}
+
+
 #pragma mark WKUIDelegate
 
 - (WKWebView*)webView:(WKWebView*)webView
@@ -448,6 +478,118 @@
   }
 
   return nil;
+}
+
+- (void)webView:(WKWebView*)webView
+    runJavaScriptConfirmPanelWithMessage:(NSString *)message 
+               initiatedByFrame:(WKFrameInfo *)frame
+                    completionHandler:(void (^)(BOOL result))completionHandler {  
+
+    NSDictionary* arguments = @{      
+      @"message" : [NSString stringWithFormat:@"%@", message]
+    };
+  
+    [_channel invokeMethod:@"onJsConfirm" 
+                      arguments:arguments 
+                        result:^(id _Nullable result) {
+                          if ([result isKindOfClass:[FlutterError class]]) {
+                            NSLog(@"onJsConfirm has unexpectedly completed with an error, "
+                                  @"proceeding to confirm.");
+                            completionHandler(true);
+                            return;
+                          }
+                          if (result == FlutterMethodNotImplemented) {
+                            NSLog(@"onJsConfirm was unexepectedly not implemented: %@, "
+                                  @"proceeding to confirm.",
+                                  result);
+                            completionHandler(true);
+                            return;
+                          }
+                          if (![result isKindOfClass:[NSNumber class]]) {
+                            NSLog(@"onJsConfirm unexpectedly returned a non boolean value: "
+                                  @"%@, proceeding to confirm.",
+                                  result);
+                            completionHandler(true);
+                            return;
+                          }
+                          NSNumber* typedResult = result;
+                          completionHandler([typedResult boolValue]);
+                        }];  
+}
+
+- (void)webView:(WKWebView*)webView
+    runJavaScriptAlertPanelWithMessage:(NSString *)message 
+               initiatedByFrame:(WKFrameInfo *)frame
+                    completionHandler:(void (^)(void))completionHandler {  
+    
+    NSDictionary* arguments = @{      
+      @"message" : [NSString stringWithFormat:@"%@", message]
+    };
+  
+    [_channel invokeMethod:@"onsJsAlert" 
+                      arguments:arguments 
+                        result:^(id _Nullable result) {
+                          if ([result isKindOfClass:[FlutterError class]]) {
+                            NSLog(@"onsJsAlert has unexpectedly completed with an error, "
+                                  @"proceeding to confirm.");
+                            completionHandler();
+                            return;
+                          }
+                          if (result == FlutterMethodNotImplemented) {
+                            NSLog(@"onsJsAlert was unexepectedly not implemented: %@, "
+                                  @"proceeding to confirm.",
+                                  result);
+                            completionHandler();
+                            return;
+                          }
+                                                    
+                          completionHandler();
+                        }];
+
+  return;
+}
+
+- (void)webView:(WKWebView*)webView
+    runJavaScriptTextInputPanelWithPrompt:(NSString *)message 
+            defaultText:(NSString *)defaultText 
+               initiatedByFrame:(WKFrameInfo *)frame
+                    completionHandler:(void (^)(NSString *result))completionHandler {  
+
+    NSDictionary* arguments = @{      
+      @"message" : [NSString stringWithFormat:@"%@", message],
+      @"default" : [NSString stringWithFormat:@"%@", defaultText]
+    };
+  
+    [_channel invokeMethod:@"onJsPrompt" 
+                      arguments:arguments 
+                        result:^(id _Nullable result) {
+                          if ([result isKindOfClass:[FlutterError class]]) {
+                            NSLog(@"onJsPrompt has unexpectedly completed with an error, "
+                                  @"returning default text.");
+                            completionHandler(defaultText);
+                            return;
+                          }
+                          if (result == FlutterMethodNotImplemented) {
+                            NSLog(@"onJsPrompt was unexepectedly not implemented: %@, "
+                                  @"returning default text.",
+                                  result);
+                            completionHandler(defaultText);
+                            return;
+                          }
+
+                          if (![result isKindOfClass:[NSString class]]) {
+                            NSLog(@"onJsConfirm unexpectedly returned a non string value: %@, "
+                                  @"returning default text.",
+                                  result);
+                            completionHandler(defaultText);
+                            return;
+                          }
+                                                     
+                          NSString* typedResult = (NSString*)result;
+                          completionHandler(typedResult);
+                        }];
+
+  return;
 }
 
 @end

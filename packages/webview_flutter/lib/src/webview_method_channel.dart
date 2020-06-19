@@ -23,10 +23,10 @@ class MethodChannelWebViewPlatform implements WebViewPlatformController {
   final MethodChannel _channel;
 
   static const MethodChannel _cookieManagerChannel =
-      MethodChannel('plugins.flutter.io/cookie_manager');
+  MethodChannel('plugins.flutter.io/cookie_manager');
 
-  Future<bool> _onMethodCall(MethodCall call) async {
-    switch (call.method) {
+  Future<dynamic> _onMethodCall(MethodCall call) async {
+    switch (call.method) {      
       case 'javascriptChannelMessage':
         final String channel = call.arguments['channel'];
         final String message = call.arguments['message'];
@@ -43,36 +43,22 @@ class MethodChannelWebViewPlatform implements WebViewPlatformController {
       case 'onPageStarted':
         _platformCallbacksHandler.onPageStarted(call.arguments['url']);
         return null;
-      case 'onWebResourceError':
-        _platformCallbacksHandler.onWebResourceError(
-          WebResourceError(
-            errorCode: call.arguments['errorCode'],
-            description: call.arguments['description'],
-            domain: call.arguments['domain'],
-            failingUrl: call.arguments['failingUrl'],
-            errorType: call.arguments['errorType'] == null
-                ? null
-                : WebResourceErrorType.values.firstWhere(
-                    (WebResourceErrorType type) {
-                      return type.toString() ==
-                          '$WebResourceErrorType.${call.arguments['errorType']}';
-                    },
-                  ),
-          ),
-        );
-        return null;
+      case 'onJsConfirm':
+        return _platformCallbacksHandler.onJsConfirm(call.arguments['message']);
+      case 'onJsAlert':
+        return _platformCallbacksHandler.onJsAlert(call.arguments['message']);
+      case 'onJsPrompt':
+        return _platformCallbacksHandler.onJsPrompt(call.arguments['message'], call.arguments['default']);
     }
-
     throw MissingPluginException(
-      '${call.method} was invoked but has no handler',
-    );
+        '${call.method} was invoked but has no handler');
   }
 
   @override
   Future<void> loadUrl(
-    String url,
-    Map<String, String> headers,
-  ) async {
+      String url,
+      Map<String, String> headers,
+      ) async {
     assert(url != null);
     return _channel.invokeMethod<void>('loadUrl', <String, dynamic>{
       'url': url,
@@ -100,6 +86,9 @@ class MethodChannelWebViewPlatform implements WebViewPlatformController {
 
   @override
   Future<void> clearCache() => _channel.invokeMethod<void>("clearCache");
+
+  @override
+  Future<void> stopLoading() => _channel.invokeMethod<void>("stopLoading");
 
   @override
   Future<void> updateSettings(WebSettings settings) {
@@ -130,28 +119,6 @@ class MethodChannelWebViewPlatform implements WebViewPlatformController {
 
   @override
   Future<String> getTitle() => _channel.invokeMethod<String>("getTitle");
-
-  @override
-  Future<void> scrollTo(int x, int y) {
-    return _channel.invokeMethod<void>('scrollTo', <String, int>{
-      'x': x,
-      'y': y,
-    });
-  }
-
-  @override
-  Future<void> scrollBy(int x, int y) {
-    return _channel.invokeMethod<void>('scrollBy', <String, int>{
-      'x': x,
-      'y': y,
-    });
-  }
-
-  @override
-  Future<int> getScrollX() => _channel.invokeMethod<int>("getScrollX");
-
-  @override
-  Future<int> getScrollY() => _channel.invokeMethod<int>("getScrollY");
 
   /// Method channel implementation for [WebViewPlatform.clearCookies].
   static Future<bool> clearCookies() {
@@ -195,6 +162,7 @@ class MethodChannelWebViewPlatform implements WebViewPlatformController {
       'initialUrl': creationParams.initialUrl,
       'settings': _webSettingsToMap(creationParams.webSettings),
       'javascriptChannelNames': creationParams.javascriptChannelNames.toList(),
+      'userScripts': creationParams.userScripts.toList(),
       'userAgent': creationParams.userAgent,
       'autoMediaPlaybackPolicy': creationParams.autoMediaPlaybackPolicy.index,
     };

@@ -60,15 +60,24 @@ public class FlutterWebView implements PlatformView, MethodCallHandler {
       registerJavaScriptChannelNames((List<String>) params.get(JS_CHANNEL_NAMES_FIELD));
     }
 
+    if (params.containsKey("userScripts")) {
+      final List<Map<String, Object>> userScripts = (List<Map<String, Object>>) params.get("userScripts");
+      flutterWebViewClient.addUserScripts(userScripts);            
+    }
+
     updateAutoMediaPlaybackPolicy((Integer) params.get("autoMediaPlaybackPolicy"));
     if (params.containsKey("userAgent")) {
       String userAgent = (String) params.get("userAgent");
       updateUserAgent(userAgent);
     }
+
     if (params.containsKey("initialUrl")) {
       String url = (String) params.get("initialUrl");
       webView.loadUrl(url);
     }
+
+
+    webView.setWebChromeClient(flutterWebViewClient.createWebViewChromeClient());
   }
 
   @Override
@@ -140,6 +149,9 @@ public class FlutterWebView implements PlatformView, MethodCallHandler {
       case "reload":
         reload(result);
         break;
+      case "stopLoading":
+        stopLoading(result);
+        break;
       case "currentUrl":
         currentUrl(result);
         break;
@@ -157,18 +169,6 @@ public class FlutterWebView implements PlatformView, MethodCallHandler {
         break;
       case "getTitle":
         getTitle(result);
-        break;
-      case "scrollTo":
-        scrollTo(methodCall, result);
-        break;
-      case "scrollBy":
-        scrollBy(methodCall, result);
-        break;
-      case "getScrollX":
-        getScrollX(result);
-        break;
-      case "getScrollY":
-        getScrollY(result);
         break;
       default:
         result.notImplemented();
@@ -211,6 +211,11 @@ public class FlutterWebView implements PlatformView, MethodCallHandler {
 
   private void reload(Result result) {
     webView.reload();
+    result.success(null);
+  }
+
+  private void stopLoading(Result result) {
+    webView.stopLoading();
     result.success(null);
   }
 
@@ -266,33 +271,6 @@ public class FlutterWebView implements PlatformView, MethodCallHandler {
     result.success(webView.getTitle());
   }
 
-  private void scrollTo(MethodCall methodCall, Result result) {
-    Map<String, Object> request = (Map<String, Object>) methodCall.arguments;
-    int x = (int) request.get("x");
-    int y = (int) request.get("y");
-
-    webView.scrollTo(x, y);
-
-    result.success(null);
-  }
-
-  private void scrollBy(MethodCall methodCall, Result result) {
-    Map<String, Object> request = (Map<String, Object>) methodCall.arguments;
-    int x = (int) request.get("x");
-    int y = (int) request.get("y");
-
-    webView.scrollBy(x, y);
-    result.success(null);
-  }
-
-  private void getScrollX(Result result) {
-    result.success(webView.getScrollX());
-  }
-
-  private void getScrollY(Result result) {
-    result.success(webView.getScrollY());
-  }
-
   private void applySettings(Map<String, Object> settings) {
     for (String key : settings.keySet()) {
       switch (key) {
@@ -300,7 +278,7 @@ public class FlutterWebView implements PlatformView, MethodCallHandler {
           updateJsMode((Integer) settings.get(key));
           break;
         case "hasNavigationDelegate":
-          final boolean hasNavigationDelegate = (boolean) settings.get(key);
+          final boolean hasNavigationDelegate = (boolean) settings.get(key);          
 
           final WebViewClient webViewClient =
               flutterWebViewClient.createWebViewClient(hasNavigationDelegate);
