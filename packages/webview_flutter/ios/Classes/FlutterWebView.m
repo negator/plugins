@@ -6,6 +6,15 @@
 #import "FLTWKNavigationDelegate.h"
 #import "JavaScriptChannelHandler.h"
 
+#if __has_include(<webview_flutter/webview_flutter-Swift.h>)
+#import <webview_flutter/webview_flutter-Swift.h>
+#else
+// Support project import fallback if the generated compatibility header
+// is not copied when this plugin is created as a library.
+// https://forums.swift.org/t/swift-static-libraries-dont-copy-generated-objective-c-header/19816
+#import "webview_flutter-Swift.h"
+#endif
+
 @implementation FLTWebViewFactory {
   NSObject<FlutterBinaryMessenger>* _messenger;
 }
@@ -58,6 +67,7 @@
 
 @implementation FLTWebViewController {
   FLTWKWebView* _webView;
+  FLTCookieManager* _cookieManager; 
   int64_t _viewId;
   FlutterMethodChannel* _channel;
   NSString* _currentUrl;
@@ -88,6 +98,8 @@
 
     WKWebViewConfiguration* configuration = [[WKWebViewConfiguration alloc] init];
     configuration.userContentController = userContentController;
+    configuration.websiteDataStore = [WKWebsiteDataStore nonPersistentDataStore];  
+    WKHTTPCookieStore* cookieStore = [[configuration websiteDataStore] httpCookieStore];
     [self updateAutoMediaPlaybackPolicy:args[@"autoMediaPlaybackPolicy"]
                         inConfiguration:configuration];
 
@@ -130,7 +142,7 @@
     [configuration setValue:[NSNumber numberWithBool:YES] forKey:prop];
 
     _webView = [[FLTWKWebView alloc] initWithFrame:frame configuration:configuration];
-
+    _cookieManager = [[FLTCookieManager alloc] initWithCookieStore:cookieStore];
     _navigationDelegate = [[FLTWKNavigationDelegate alloc] initWithChannel:_channel];
     _webView.UIDelegate = self;
     _webView.scrollView.delegate = self;
@@ -206,6 +218,15 @@
     [self getScrollX:call result:result];
   } else if ([[call method] isEqualToString:@"getScrollY"]) {
     [self getScrollY:call result:result];
+  } else if ([[call method] isEqualToString:@"getCookies"]) {
+    NSDictionary<NSString*, id>* arguments = [call arguments];
+    NSString* url = arguments[@"url"];
+    [_cookieManager getCookiesWithUrlString:url result:result];
+  } else if ([[call method] isEqualToString:@"setCookies"]) {
+    NSArray<NSDictionary*>* arguments = [call arguments];    
+    [_cookieManager setCookiesWithCookies:arguments result:result];
+  } else if ([[call method] isEqualToString:@"clearCookies"]) {    
+    [_cookieManager clearCookiesWithResult:result];
   } else {
     result(FlutterMethodNotImplemented);
   }
@@ -318,7 +339,7 @@
 - (void)clearCache:(FlutterResult)result {
   if (@available(iOS 9.0, *)) {
     NSSet* cacheDataTypes = [WKWebsiteDataStore allWebsiteDataTypes];
-    WKWebsiteDataStore* dataStore = [WKWebsiteDataStore defaultDataStore];
+    WKWebsiteDataStore* dataStore = [[_webView configuration] websiteDataStore];
     NSDate* dateFrom = [NSDate dateWithTimeIntervalSince1970:0];
     [dataStore removeDataOfTypes:cacheDataTypes
                    modifiedSince:dateFrom

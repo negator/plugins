@@ -22,9 +22,6 @@ class MethodChannelWebViewPlatform implements WebViewPlatformController {
 
   final MethodChannel _channel;
 
-  static const MethodChannel _cookieManagerChannel =
-      MethodChannel('plugins.flutter.io/cookie_manager');
-
   Future<dynamic> _onMethodCall(MethodCall call) async {
     switch (call.method) {
       case 'javascriptChannelMessage':
@@ -65,10 +62,11 @@ class MethodChannelWebViewPlatform implements WebViewPlatformController {
         return await _platformCallbacksHandler
             .onJsConfirm(call.arguments['message']);
       case 'onJsAlert':
-        return await _platformCallbacksHandler.onJsAlert(call.arguments['message']);        
+        return await _platformCallbacksHandler
+            .onJsAlert(call.arguments['message']);
       case 'onJsPrompt':
         return await _platformCallbacksHandler.onJsPrompt(
-            call.arguments['message'], call.arguments['default']);        
+            call.arguments['message'], call.arguments['default']);
     }
 
     throw MissingPluginException(
@@ -164,12 +162,52 @@ class MethodChannelWebViewPlatform implements WebViewPlatformController {
   @override
   Future<int> getScrollY() => _channel.invokeMethod<int>("getScrollY");
 
-  /// Method channel implementation for [WebViewPlatform.clearCookies].
-  static Future<bool> clearCookies() {
-    return _cookieManagerChannel
-        .invokeMethod<bool>('clearCookies')
-        .then<bool>((dynamic result) => result);
+  /// Read out all cookies, or all cookies for a [url] when provided
+  @override
+  Future<List<Cookie>> getCookies(String url) {
+    return _channel.invokeListMethod<Map>('getCookies', {'url': url}).then(
+        (results) => results.map((Map result) {
+              final c =
+                  Cookie(result['name'], result['value'], result['domain'])
+                    // following values optionally work on iOS only
+                    ..path = result['path']
+                    ..secure = result['secure']
+                    ..maxAge = result['maxAge']
+                    ..httpOnly = result['httpOnly'];
+
+              if (result['expires'] != null) {
+                c.expires = DateTime.fromMillisecondsSinceEpoch(
+                    (result['expires'] * 1000).toInt());
+              }
+
+              return c;
+            }).toList());
   }
+
+  @override
+  Future<void> setCookies(List<Cookie> cookies) {
+    final transferCookies = cookies.map((Cookie c) {
+      final output = <String, dynamic>{
+        'name': c.name,
+        'value': c.value,
+        'path': c.path,
+        'domain': c.domain,
+        'secure': c.secure,
+        'httpOnly': c.httpOnly,
+        'maxAge': c.maxAge,
+        'asString': c.toString(),
+      };
+
+      if (c.expires != null) {
+        output['expires'] = c.expires.millisecondsSinceEpoch ~/ 1000;
+      }
+
+      return output;
+    }).toList();
+    return _channel.invokeMethod<void>('setCookies', transferCookies);
+  }
+
+  Future<void> clearCookies() =>_channel.invokeMethod<void>('clearCookies');  
 
   static Map<String, dynamic> _webSettingsToMap(WebSettings settings) {
     final Map<String, dynamic> map = <String, dynamic>{};

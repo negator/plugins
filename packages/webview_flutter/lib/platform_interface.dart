@@ -9,6 +9,8 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
 
 import 'webview_flutter.dart';
+import 'cookie.dart';
+export 'cookie.dart';
 
 /// Interface for callbacks made by [WebViewPlatformController].
 ///
@@ -332,6 +334,27 @@ abstract class WebViewPlatformController {
     throw UnimplementedError(
         "WebView getScrollY is not implemented on the current platform");
   }
+
+  /// Return the set of cookies
+  ///
+  /// The url parameter specifies which domain to filter
+  Future<List<Cookie>> getCookies(String url) {
+    throw UnimplementedError(
+        "WebView getCookies is not implemented on the current platform");
+  }
+
+  /// Set cookies into the webview
+  ///
+  /// The cookies to set
+  Future<void> setCookies(List<Cookie> cookies) {
+    throw UnimplementedError(
+        "WebView setCookies is not implemented on the current platform");
+  }
+
+  Future<void> clearCookies() {
+    throw UnimplementedError(
+        "WebView clearCookies is not implemented on the current platform");
+  }
 }
 
 /// A single setting for configuring a WebViewPlatform which may be absent.
@@ -530,12 +553,4 @@ abstract class WebViewPlatform {
     WebViewPlatformCreatedCallback onWebViewPlatformCreated,
     Set<Factory<OneSequenceGestureRecognizer>> gestureRecognizers,
   });
-
-  /// Clears all cookies for all [WebView] instances.
-  ///
-  /// Returns true if cookies were present before clearing, else false.
-  Future<bool> clearCookies() {
-    throw UnimplementedError(
-        "WebView clearCookies is not implemented on the current platform");
-  }
 }

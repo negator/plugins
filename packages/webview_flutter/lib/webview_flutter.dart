@@ -797,25 +797,27 @@ class WebViewController {
   Future<int> getScrollY() {
     return _webViewPlatformController.getScrollY();
   }
-}
 
-/// Manages cookies pertaining to all [WebView]s.
-class CookieManager {
-  /// Creates a [CookieManager] -- returns the instance if it's already been called.
-  factory CookieManager() {
-    return _instance ??= CookieManager._();
+  /// Return the set of cookies
+  ///
+  /// The url parameter specifies which domain to filter
+  Future<List<Cookie>> getCookies(String url) {
+    return _webViewPlatformController.getCookies(url);
   }
 
-  CookieManager._();
-
-  static CookieManager _instance;
-
-  /// Clears all cookies for all [WebView] instances.
+  /// Set cookies into the webview
   ///
-  /// This is a no op on iOS version smaller than 9.
+  /// The cookies to set
+  Future<void> setCookies(List<Cookie> cookies) {
+    return _webViewPlatformController.setCookies(cookies);
+  }
+
+  /// Set cookies into the webview
   ///
-  /// Returns true if cookies were present before clearing, else false.
-  Future<bool> clearCookies() => WebView.platform.clearCookies();
+  /// The cookies to set
+  Future<void> clearCookies() {
+    return _webViewPlatformController.clearCookies();
+  }
 }
 
 // Throws an ArgumentError if `url` is not a valid URL string.

@@ -40,8 +40,5 @@ class CupertinoWebView implements WebViewPlatform {
           MethodChannelWebViewPlatform.creationParamsToMap(creationParams),
       creationParamsCodec: const StandardMessageCodec(),
     );
-  }
-
-  @override
-  Future<bool> clearCookies() => MethodChannelWebViewPlatform.clearCookies();
+  }  
 }
