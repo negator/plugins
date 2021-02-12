@@ -85,6 +85,9 @@ typedef void PageStartedCallback(String url);
 /// Signature for when a [WebView] has finished loading a page.
 typedef void PageFinishedCallback(String url);
 
+// Signature for when cookies in a [WebView] are updated
+typedef void CookiesUpdatedCallback(List<Cookie> cookies);
+
 /// Signature for when a [WebView] has failed to load a resource.
 typedef void WebResourceErrorCallback(WebResourceError error);
 
@@ -174,10 +177,12 @@ class WebView extends StatefulWidget {
     this.javascriptMode = JavascriptMode.disabled,
     this.javascriptChannels,
     this.userScripts = const {},
+    this.cookies = const [],
     this.navigationDelegate,
     this.gestureRecognizers,
     this.onPageStarted,
     this.onPageFinished,
+    this.onCookiesUpdated,
     this.onWebResourceError,
     this.onJsConfirm,
     this.onJsAlert,
@@ -279,6 +284,8 @@ class WebView extends StatefulWidget {
   /// This closely mirrors WKUserScript - https://developer.apple.com/documentation/webkit/wkuserscript
   final Set<UserScript> userScripts;
 
+  final List<Cookie> cookies;
+
   /// A delegate function that decides how to handle navigation actions.
   ///
   /// When a navigation is initiated by the WebView (e.g when a user clicks a link)
@@ -317,6 +324,9 @@ class WebView extends StatefulWidget {
   /// directly in the HTML has been loaded and code injected with
   /// [WebViewController.evaluateJavascript] can assume this.
   final PageFinishedCallback onPageFinished;
+
+  // Invoked when cookies are updated
+  final CookiesUpdatedCallback onCookiesUpdated;
 
   /// Invoked when a javascript confirm dialog is requested to be presented
   ///
@@ -446,6 +456,7 @@ CreationParams _creationParamsfromWidget(WebView widget) {
     userScripts: _extractUserScriptMap(widget.userScripts),
     userAgent: widget.userAgent,
     autoMediaPlaybackPolicy: widget.initialMediaPlaybackPolicy,
+    cookies: widget.cookies,
   );
 }
 
@@ -551,6 +562,13 @@ class _PlatformCallbacksHandler implements WebViewPlatformCallbacksHandler {
   void onPageFinished(String url) {
     if (_widget.onPageFinished != null) {
       _widget.onPageFinished(url);
+    }
+  }
+
+  @override
+  void onCookiesUpdated(List<Cookie> cookies) {
+    if (_widget.onCookiesUpdated != null) {
+      _widget.onCookiesUpdated(cookies);
     }
   }
 

@@ -10,6 +10,13 @@ public class FLTCookieManager: NSObject {
         httpCookieStore = cookieStore
     }
 
+    @objc public init(cookieStore: WKHTTPCookieStore, cookies: [NSDictionary]) {
+        httpCookieStore = cookieStore
+        super.init()
+
+        setCookies(cookies: cookies) { _ in }
+    }
+
     @objc public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
         switch call.method {
         case "getCookies":
@@ -26,6 +33,19 @@ public class FLTCookieManager: NSObject {
         default:
             result(FlutterMethodNotImplemented)
         }
+    }
+
+    // Set cookies synchronously
+    @objc public func setCookiesSync(cookies: [NSDictionary]) {
+        let wg = DispatchGroup()
+
+        wg.enter()
+
+        setCookies(cookies: cookies) { _ in            
+            wg.leave()
+        }
+
+        wg.wait()
     }
 
     @objc public func setCookies(cookies: [NSDictionary], result: @escaping FlutterResult) {
@@ -45,13 +65,6 @@ public class FLTCookieManager: NSObject {
     }
 
     @objc public func clearCookies(result: @escaping FlutterResult) {
-        // delete HTTPCookieStorage all cookies
-        if let cookies = HTTPCookieStorage.shared.cookies {
-            for cookie in cookies {
-                HTTPCookieStorage.shared.deleteCookie(cookie)
-            }
-        }
-
         httpCookieStore.getAllCookies { cookies in
             // sets the cookie at the index in the cookies list
             func deleteCookieAt(index: Int = 0) {
@@ -70,11 +83,7 @@ public class FLTCookieManager: NSObject {
 
     @objc public func hasCookies(result: @escaping FlutterResult) {
         httpCookieStore.getAllCookies { cookies in
-            var isEmpty = cookies.isEmpty
-            if isEmpty {
-                // If it is empty, check whether the HTTPCookieStorage cookie is also empty.
-                isEmpty = HTTPCookieStorage.shared.cookies?.isEmpty ?? true
-            }
+            let isEmpty = cookies.isEmpty
             result(!isEmpty)
         }
     }
@@ -123,15 +132,8 @@ public class FLTCookieManager: NSObject {
                 return url == "" || containsHost
             }
 
-            var cookies = wkCookies.filter { matches(cookie: $0) }
+            let cookies = wkCookies.filter { matches(cookie: $0) }
 
-            // If the cookie value is empty in WKHTTPCookieStore,
-            // get the cookie value from HTTPCookieStorage
-            if cookies.count == 0 {
-                if let httpCookies = HTTPCookieStorage.shared.cookies {
-                    cookies = httpCookies.filter { matches(cookie: $0) }
-                }
-            }
             let cookieList = NSMutableArray()
             cookies.forEach { cookie in
                 cookieList.add(FLTCookieManager._cookieToDictionary(cookie: cookie))

@@ -31,6 +31,9 @@ abstract class WebViewPlatformCallbacksHandler {
   /// Invoked by [WebViewPlatformController] when a page has finished loading.
   void onPageFinished(String url);
 
+  /// Invoked by [WebViewPlatformController] when cookies are updated.
+  void onCookiesUpdated(List<Cookie> cookies);
+
   /// Report web resource loading error to the host application.
   void onWebResourceError(WebResourceError error);
 
@@ -468,7 +471,8 @@ class CreationParams {
     this.webSettings,
     this.javascriptChannelNames,
     this.userAgent,
-    this.userScripts,
+    this.userScripts,    
+    this.cookies,
     this.autoMediaPlaybackPolicy =
         AutoMediaPlaybackPolicy.require_user_action_for_all_media_types,
   }) : assert(autoMediaPlaybackPolicy != null);
@@ -496,8 +500,10 @@ class CreationParams {
   // to PlatformWebView.
   final Set<String> javascriptChannelNames;
 
-  /// User defined secripts to inject into the webview
-  final Set<Map<String, dynamic>> userScripts;
+  /// User defined scripts to inject into the webview
+  final Set<Map<String, dynamic>> userScripts;  
+
+  final List<Cookie> cookies;
 
   /// The value used for the HTTP User-Agent: request header.
   ///

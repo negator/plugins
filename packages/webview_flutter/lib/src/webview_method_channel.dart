@@ -36,9 +36,12 @@ class MethodChannelWebViewPlatform implements WebViewPlatformController {
         );
       case 'onPageFinished':
         _platformCallbacksHandler.onPageFinished(call.arguments['url']);
-        return null;
+        return null;      
       case 'onPageStarted':
         _platformCallbacksHandler.onPageStarted(call.arguments['url']);
+        return null;
+      case 'cookiesUpdated':
+        _platformCallbacksHandler.onCookiesUpdated(call.arguments['cookies']);
         return null;
       case 'onWebResourceError':
         _platformCallbacksHandler.onWebResourceError(
@@ -186,28 +189,28 @@ class MethodChannelWebViewPlatform implements WebViewPlatformController {
 
   @override
   Future<void> setCookies(List<Cookie> cookies) {
-    final transferCookies = cookies.map((Cookie c) {
-      final output = <String, dynamic>{
-        'name': c.name,
-        'value': c.value,
-        'path': c.path,
-        'domain': c.domain,
-        'secure': c.secure,
-        'httpOnly': c.httpOnly,
-        'maxAge': c.maxAge,
-        'asString': c.toString(),
-      };
-
-      if (c.expires != null) {
-        output['expires'] = c.expires.millisecondsSinceEpoch ~/ 1000;
-      }
-
-      return output;
-    }).toList();
+    final transferCookies = cookies.map(toCookie).toList();
     return _channel.invokeMethod<void>('setCookies', transferCookies);
   }
 
-  Future<void> clearCookies() =>_channel.invokeMethod<void>('clearCookies');  
+  static Map<String, dynamic> toCookie(Cookie c) {
+    final output = <String, dynamic>{
+      'name': c.name,
+      'value': c.value,
+      'path': c.path,
+      'domain': c.domain,
+      'secure': c.secure,
+      'httpOnly': c.httpOnly,
+      'maxAge': c.maxAge,
+      'asString': c.toString(),
+    };
+    if (c.expires != null) {
+      output['expires'] = c.expires.millisecondsSinceEpoch ~/ 1000;
+    }
+    return output;
+  }
+
+  Future<void> clearCookies() => _channel.invokeMethod<void>('clearCookies');
 
   static Map<String, dynamic> _webSettingsToMap(WebSettings settings) {
     final Map<String, dynamic> map = <String, dynamic>{};
@@ -244,9 +247,10 @@ class MethodChannelWebViewPlatform implements WebViewPlatformController {
       'initialUrl': creationParams.initialUrl,
       'settings': _webSettingsToMap(creationParams.webSettings),
       'javascriptChannelNames': creationParams.javascriptChannelNames.toList(),
-      'userScripts': creationParams.userScripts.toList(),
+      'userScripts': creationParams.userScripts.toList(),      
       'userAgent': creationParams.userAgent,
       'autoMediaPlaybackPolicy': creationParams.autoMediaPlaybackPolicy.index,
+      'cookies': creationParams.cookies.map(toCookie).toList()
     };
   }
 }

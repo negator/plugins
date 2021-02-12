@@ -3,13 +3,21 @@
 // found in the LICENSE file.
 
 #import "FLTWebViewFlutterPlugin.h"
-#import "FlutterWebView.h"
+
+#if __has_include(<webview_flutter/webview_flutter-Swift.h>)
+#import <webview_flutter/webview_flutter-Swift.h>
+#else
+// Support project import fallback if the generated compatibility header
+// is not copied when this plugin is created as a library.
+// https://forums.swift.org/t/swift-static-libraries-dont-copy-generated-objective-c-header/19816
+#import "webview_flutter-Swift.h"
+#endif
 
 @implementation FLTWebViewFlutterPlugin
 
 + (void)registerWithRegistrar:(NSObject<FlutterPluginRegistrar>*)registrar {
-  FLTWebViewFactory* webviewFactory =
-      [[FLTWebViewFactory alloc] initWithMessenger:registrar.messenger];
+  FLTWebViewFactorySwift* webviewFactory =
+      [[FLTWebViewFactorySwift alloc] initWithMessenger:registrar.messenger];
   [registrar registerViewFactory:webviewFactory withId:@"plugins.flutter.io/webview"];  
 }
 
